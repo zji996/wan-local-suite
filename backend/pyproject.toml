@@ -1,22 +1,11 @@
 [project]
-name = "wan-local-backend"
+name = "backend"
 version = "0.1.0"
-description = "FastAPI inference service for Wan Local Suite"
-requires-python = ">=3.10"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
 dependencies = [
-  "fastapi",
-  "uvicorn[standard]",
-  "pydantic>=2.0"
+    "torch>=2.8.0",
+    "torchaudio>=2.8.0",
+    "torchvision>=0.23.0",
 ]
-
-[project.optional-dependencies]
-dev = [
-  "httpx",
-  "pytest"
-]
-
-[tool.uv]
-index-url = "https://pypi.org/simple"
-
-[project.scripts]
-serve = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
