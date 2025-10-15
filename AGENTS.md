@@ -14,6 +14,13 @@
 - `make infer args="--ckpt ./models/latest --config ./configs/infer.yaml"` triggers `torchrun`-based inference.
 - After dependency edits run `uv sync` inside `backend/` and `npm install` (or `pnpm install`) inside `frontend/`.
 
+## DFloat11 Workflow
+- Compress Wan2.2 Animate checkpoints with `uv run --project backend python scripts/compress_wan22_df11.py --checkpoint-dir models/Wan2.2-Animate-14B --output-dir models/Wan2.2-Animate-14B-DF11 --save-single-file`.
+- When using DF11 set the env vars: `WAN_USE_DFLOAT11=true`, `WAN_DFLOAT11_LOCAL_DIR=models/Wan2.2-Animate-14B-DF11`, and cap GPU memory with `WAN_DFLOAT11_MAX_MEMORY='{"0":"19GiB","1":"19GiB"}'`; optionally enable `WAN_DFLOAT11_CPU_OFFLOAD=true` for tighter VRAM budgets.
+- Launch the backend on dual GPUs via a single process:  
+  `PYTHONPATH=. CUDA_VISIBLE_DEVICES=0,1 uv run --project backend uvicorn backend.app.main:app --host 0.0.0.0 --port 8000`. DF11 disables sequence parallelism and FSDP automatically.
+- Keep T5/CLIP/VAE weights in their original formats; only the diffusion transformer requires DF11 compression.
+
 ## Coding Style & Naming Conventions
 - Python follows PEP 8 with four-space indents and type hints on public functions; colocate domain modules under `backend/app/`.
 - Format Python with `black` and lint with `ruff` (`uv tool install black ruff`) before submitting.

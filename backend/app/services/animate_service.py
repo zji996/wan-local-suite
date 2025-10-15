@@ -15,7 +15,7 @@ import torch
 import torch.distributed as dist
 from imageio import v2 as imageio
 
-from third_party.wan2.2.wan.animate import WanAnimate
+from third_party.wan2_2.wan.animate import WanAnimate
 
 from ..config import AnimateSettings, get_settings
 from ..schemas.animate import AnimateJobCreate, AnimateJobStatus
@@ -36,6 +36,7 @@ class AnimateService:
         self._model: Optional[WanAnimate] = None
         self._config_template = None
         self._checkpoint_dir: Optional[Path] = None
+        self._dfloat11_dir: Optional[Path] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -100,6 +101,14 @@ class AnimateService:
         self._execute_job(job_id, request)
         return self.get_status(job_id)
 
+    def preload_model(self) -> None:
+        """Ensure the WanAnimate weights are resident on the current process."""
+        try:
+            self._load_model()
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to preload WanAnimate model")
+            raise
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -163,20 +172,31 @@ class AnimateService:
 
             checkpoint_dir = self._resolve_checkpoint_dir()
             config = deepcopy(self._load_config_template())
+            dfloat11_dir: Optional[Path] = None
+            if self.settings.use_dfloat11:
+                dfloat11_dir = self._resolve_dfloat11_dir(checkpoint_dir)
 
             use_sp = self.settings.enable_sequence_parallel
             if use_sp is None:
                 use_sp = self.world_size > 1
+            if self.settings.use_dfloat11 and use_sp:
+                logger.warning("Disabling sequence parallelism because DF11 weights are enabled.")
+                use_sp = False
+            enable_fsdp = self.settings.enable_fsdp
+            if self.settings.use_dfloat11 and enable_fsdp:
+                logger.warning("Disabling FSDP because DF11 weights are enabled.")
+                enable_fsdp = False
 
             if self.world_size > 1 and not dist.is_initialized():
                 raise RuntimeError("torch.distributed must be initialized for multi-GPU inference")
 
             logger.info(
-                "Loading WanAnimate model from %s (device cuda:%s, sp=%s, fsdp=%s)",
+                "Loading WanAnimate model from %s (device cuda:%s, sp=%s, fsdp=%s, df11=%s)",
                 checkpoint_dir,
                 self.device_id,
                 use_sp,
-                self.settings.enable_fsdp,
+                enable_fsdp,
+                bool(dfloat11_dir),
             )
 
             model = WanAnimate(
@@ -185,9 +205,14 @@ class AnimateService:
                 device_id=self.device_id,
                 rank=self.rank,
                 use_sp=use_sp,
-                dit_fsdp=self.settings.enable_fsdp,
+                dit_fsdp=enable_fsdp,
                 init_on_cpu=self.settings.init_on_cpu,
                 use_relighting_lora=self.settings.use_relighting_lora,
+                dfloat11_model_path=str(dfloat11_dir) if dfloat11_dir else None,
+                dfloat11_cpu_offload=self.settings.dfloat11_cpu_offload,
+                dfloat11_cpu_offload_blocks=self.settings.dfloat11_cpu_offload_blocks,
+                dfloat11_pin_memory=self.settings.dfloat11_pin_memory,
+                dfloat11_max_memory=self.settings.dfloat11_max_memory,
             )
 
             self._model = model
@@ -234,6 +259,57 @@ class AnimateService:
         path = Path(local_dir).expanduser().resolve()
         self._checkpoint_dir = path
         return path
+
+    def _resolve_dfloat11_dir(self, checkpoint_dir: Path) -> Optional[Path]:
+        if not self.settings.use_dfloat11:
+            return None
+
+        if self._dfloat11_dir is not None:
+            return self._dfloat11_dir
+
+        if self.settings.dfloat11_local_dir:
+            path = self.settings.dfloat11_local_dir.expanduser().resolve()
+            if not path.exists():
+                raise FileNotFoundError(f"DF11 checkpoint directory not found: {path}")
+            self._dfloat11_dir = path
+            return path
+
+        if self.settings.dfloat11_repo_id:
+            try:
+                from huggingface_hub import snapshot_download
+            except ImportError as exc:
+                raise RuntimeError(
+                    "huggingface-hub is required to download DF11 checkpoints. Install with `uv add huggingface_hub`."
+                ) from exc
+
+            models_root = self.settings.models_root.expanduser().resolve()
+            models_root.mkdir(parents=True, exist_ok=True)
+            repo_safe = self.settings.dfloat11_repo_id.replace("/", "__")
+            destination = models_root / "dfloat11" / repo_safe
+            logger.info(
+                "Downloading DF11 weights from %s into %s",
+                self.settings.dfloat11_repo_id,
+                destination,
+            )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            local_dir = snapshot_download(
+                repo_id=self.settings.dfloat11_repo_id,
+                revision=self.settings.dfloat11_revision,
+                local_dir=str(destination),
+                local_dir_use_symlinks=False,
+            )
+            path = Path(local_dir).expanduser().resolve()
+            self._dfloat11_dir = path
+            return path
+
+        fallback = checkpoint_dir.parent / f"{checkpoint_dir.name}-DF11"
+        if fallback.exists():
+            self._dfloat11_dir = fallback
+            return fallback
+
+        raise FileNotFoundError(
+            "DF11 weights were requested but neither WAN_DFLOAT11_LOCAL_DIR nor WAN_DFLOAT11_REPO_ID was provided."
+        )
 
     def _build_generate_kwargs(self, request: AnimateJobCreate) -> Dict[str, Any]:
         config = self._load_config_template()

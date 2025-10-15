@@ -1,0 +1,18 @@
+# Replacement demo spec. Update paths as needed for your local media.
+job_id: demo-replace
+mode: replace
+video: examples/preprocess_demo/inputs/1.mp4
+reference_image: examples/preprocess_demo/inputs/2.jpg
+# process_checkpoint: /abs/path/to/Wan2.2-Animate-14B/process_checkpoint
+output_root: data/jobs
+resolution:
+  width: 1280
+  height: 720
+fps: 30
+retarget: false
+use_flux: false
+mask:
+  iterations: 3
+  k: 7
+  w_len: 1
+  h_len: 1

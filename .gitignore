@@ -13,6 +13,7 @@ backend/.venv/
 *.env
 .env
 .env.*
+!.env.template
 .uv/
 
 # Test & type checker caches
@@ -43,6 +44,12 @@ data/
 !data/.gitkeep
 models/
 !models/.gitkeep
+tmp_DFloat11/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.bin
 
 # OS & editor junk
 .DS_Store
@@ -52,3 +59,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.cache/
+*.log
+*.log.*

@@ -1,0 +1,13 @@
+# Populate inputs before running the preprocess script.
+job_id: demo-animate
+mode: animate
+video: examples/preprocess_demo/inputs/driving.mp4
+reference_image: examples/preprocess_demo/inputs/reference.png
+# process_checkpoint: /abs/path/to/Wan2.2-Animate-14B/process_checkpoint
+output_root: data/jobs
+resolution:
+  width: 1280
+  height: 720
+fps: 30
+retarget: true
+use_flux: false

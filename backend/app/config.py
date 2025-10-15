@@ -27,13 +27,22 @@ class AnimateSettings(BaseSettings):
     use_relighting_lora: bool = False
     init_on_cpu: bool = True
     device_id: int = 0
-    config_module: str = "third_party.wan2.2.wan.configs.wan_animate_14B"
+    config_module: str = "third_party.wan2_2.wan.configs.wan_animate_14B"
     config_attr: str = "animate_14B"
+    use_dfloat11: bool = False
+    dfloat11_repo_id: Optional[str] = None
+    dfloat11_revision: Optional[str] = None
+    dfloat11_local_dir: Optional[Path] = None
+    dfloat11_cpu_offload: bool = False
+    dfloat11_cpu_offload_blocks: Optional[int] = None
+    dfloat11_pin_memory: bool = True
+    dfloat11_max_memory: Optional[dict[str, str]] = None
 
     model_config = SettingsConfigDict(
         env_prefix="WAN_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
         frozen=True,
     )
 
